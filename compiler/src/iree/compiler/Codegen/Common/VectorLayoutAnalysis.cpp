@@ -206,6 +206,16 @@ void LayoutAnalysis::propagateOneForward(Value val,
       continue;
     }
 
+    if (auto toSIMD = dyn_cast<ToSIMDOp>(user)) {
+      addCandidate(toSIMD.getResult(), layout);
+      continue;
+    }
+
+    if (auto toSIMT = dyn_cast<ToSIMTOp>(user)) {
+      addCandidate(toSIMT.getResult(), layout);
+      continue;
+    }
+
     if (auto multiReduce = dyn_cast<vector::MultiDimReductionOp>(user)) {
       if (multiReduce.getSource() == val) {
         if (auto maskOp =
@@ -342,6 +352,19 @@ void LayoutAnalysis::fixupOp(Operation *op) {
     return;
   }
 
+  // to_simd / to_simt: result layout -> input gets same layout.
+  if (auto toSIMD = dyn_cast<ToSIMDOp>(op)) {
+    VectorLayoutInterface layout = getResolvedLayout(toSIMD.getResult());
+    setLayoutOrClone(&toSIMD.getInputMutable(), layout);
+    return;
+  }
+
+  if (auto toSIMT = dyn_cast<ToSIMTOp>(op)) {
+    VectorLayoutInterface layout = getResolvedLayout(toSIMT.getResult());
+    setLayoutOrClone(&toSIMT.getInputMutable(), layout);
+    return;
+  }
+
   // to_layout: result layout -> input gets same layout.
   if (auto toLayout = dyn_cast<ToLayoutOp>(op)) {
     if (toLayout.getSharedMemoryConversion()) {
@@ -350,7 +373,16 @@ void LayoutAnalysis::fixupOp(Operation *op) {
       return;
     }
     VectorLayoutInterface layout = getResolvedLayout(toLayout.getResult());
-    setLayoutOrClone(&toLayout.getInputMutable(), layout);
+    if (!layout) {
+      return;
+    }
+    // `to_layout` is an explicit conversion boundary. It is still useful as an
+    // anchor when its input has no layout yet, but if the input is already
+    // resolved to a different layout we must not force it to match the result
+    // layout here or we will keep materializing nested `to_layout` ops.
+    if (!hasResolvedLayout(toLayout.getInput())) {
+      resolved[toLayout.getInput()] = layout;
+    }
     return;
   }
 
@@ -518,16 +550,35 @@ void propagateVectorLayoutInfo(
     Operation *root, llvm::MapVector<Value, VectorLayoutInterface> &layouts) {
   LayoutAnalysis analysis;
 
-  // Phase 1: Seed anchors and forward propagation (no IR mutation).
+  // Seed anchors once; later iterations feed any fixup-discovered layouts back
+  // into the forward queue until the resolved map reaches a fixed point.
+  // Only newly resolved values are re-enqueued; reprocessing the entire
+  // resolved map on every iteration causes pathological compile-time blowups
+  // once backward fixup starts cloning/inserting layout materializations.
   analysis.seed(root);
-  analysis.runForward();
+  size_t previousResolvedCount = 0;
+  while (true) {
+    // Phase 1: forward propagation (no IR mutation).
+    analysis.runForward();
 
-  // Resolve: pick first candidate for each value.
-  analysis.resolve();
+    // Resolve: pick first candidate for each value.
+    analysis.resolve();
 
-  // Phase 2: Backward fixup (mutates IR).
-  for (Region &region : root->getRegions()) {
-    analysis.fixupRegion(region);
+    // Phase 2: backward fixup (mutates IR).
+    for (Region &region : root->getRegions()) {
+      analysis.fixupRegion(region);
+    }
+
+    size_t currentResolvedCount = analysis.resolved.size();
+    if (currentResolvedCount == previousResolvedCount) {
+      break;
+    }
+    auto it = analysis.resolved.begin();
+    std::advance(it, previousResolvedCount);
+    for (; it != analysis.resolved.end(); ++it) {
+      analysis.addCandidate(it->first, it->second);
+    }
+    previousResolvedCount = currentResolvedCount;
   }
 
   layouts = std::move(analysis.resolved);

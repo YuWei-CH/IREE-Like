@@ -208,6 +208,57 @@ func.func @transpose_and_reduction(%arr: memref<16x16xf16>, %arr2: memref<16xf16
 
 // -----
 
+#layout = #iree_vector_ext.nested_layout<
+  subgroup_tile = [1, 1],
+  batch_tile = [1, 1],
+  outer_tile = [1, 1],
+  thread_tile = [1, 1],
+  element_tile = [16, 16],
+
+  subgroup_strides = [0, 0],
+  thread_strides   = [0, 0]
+>
+
+// Propagate through temporary SIMD/SIMT materializations.
+func.func @through_simd_materializations(%a: vector<16x16xf16>) -> vector<16x16xf32> {
+  %al = iree_vector_ext.to_layout %a to layout(#layout) : vector<16x16xf16>
+  // expected-remark @below {{element_tile = [16, 16]}}
+  %simd = iree_vector_ext.to_simd %al : vector<16x16xf16> -> vector<16x16xf16>
+  // expected-remark @below {{element_tile = [16, 16]}}
+  %simt = iree_vector_ext.to_simt %simd : vector<16x16xf16> -> vector<16x16xf16>
+  %simd_2 = iree_vector_ext.to_simd %simt : vector<16x16xf16> -> vector<16x16xf16>
+  // expected-remark @above {{element_tile = [16, 16]}}
+  %ext = arith.extf %simd_2 : vector<16x16xf16> to vector<16x16xf32>
+  // expected-remark @above {{element_tile = [16, 16]}}
+  func.return %ext : vector<16x16xf32>
+}
+
+// -----
+
+#layout = #iree_vector_ext.nested_layout<
+  subgroup_tile = [1, 1, 1, 1],
+  batch_tile = [1, 1, 1, 1],
+  outer_tile = [1, 1, 1, 1],
+  thread_tile = [1, 1, 32, 1],
+  element_tile = [1, 1, 1, 8],
+
+  subgroup_strides = [0, 0, 0, 0],
+  thread_strides   = [0, 0, 1, 0]
+>
+
+// Propagate again after fixup when a source layout is only discovered through
+// a downstream shape_cast/to_layout chain.
+func.func @forward_after_fixup(%a: vector<1x1x256xbf16>) -> vector<1x1x256xf32> {
+  // expected-remark @below {{thread_tile = [1, 1, 32, 1]}}
+  %packed = vector.shape_cast %a : vector<1x1x256xbf16> to vector<1x1x32x8xbf16>
+  %anchored = iree_vector_ext.to_layout %packed to layout(#layout) : vector<1x1x32x8xbf16>
+  // expected-remark @below {{thread_tile = [1, 1, 32]}}
+  %ext = arith.extf %a : vector<1x1x256xbf16> to vector<1x1x256xf32>
+  func.return %ext : vector<1x1x256xf32>
+}
+
+// -----
+
 #layoutA = #iree_vector_ext.nested_layout<
   subgroup_tile = [1, 1],
   batch_tile = [1, 1],

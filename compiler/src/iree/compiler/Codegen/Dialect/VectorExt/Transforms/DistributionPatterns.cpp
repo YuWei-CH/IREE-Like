@@ -7,6 +7,7 @@
 #include "iree/compiler/Codegen/Dialect/VectorExt/Transforms/DistributionPatterns.h"
 #include "iree/compiler/Codegen/Dialect/VectorExt/IR/VectorExtDialect.h"
 #include "iree/compiler/Codegen/Dialect/VectorExt/IR/VectorExtOps.h"
+#include "llvm/ADT/SmallPtrSet.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Support/LogicalResult.h"
 
@@ -166,10 +167,29 @@ SmallVector<Value> DistributionPattern::getOpDistributedReplacements(
 
 void DistributionPattern::replaceOpWithDistributedValues(
     RewriterBase &rewriter, Operation *op, ValueRange values) const {
+  SmallVector<Operation *> usersToRedistribute;
+  llvm::SmallPtrSet<Operation *, 4> seenUsers;
+  for (OpResult result : op->getResults()) {
+    for (Operation *user : result.getUsers()) {
+      if (seenUsers.insert(user).second) {
+        usersToRedistribute.push_back(user);
+      }
+    }
+  }
+
   // Replace all OpResults with the given values.
   SmallVector<Value> replacements =
       getOpDistributedReplacements(rewriter, op, values);
   rewriter.replaceOp(op, replacements);
+
+  auto unitAttr = UnitAttr::get(rewriter.getContext());
+  for (Operation *user : usersToRedistribute) {
+    if (!hasOpSignature(user)) {
+      continue;
+    }
+    rewriter.modifyOpInPlace(
+        user, [&]() { user->setAttr(kVectorLayoutRedistributeAttrName, unitAttr); });
+  }
 }
 
 std::optional<DistributionSignature>

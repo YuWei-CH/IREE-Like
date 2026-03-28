@@ -45,8 +45,26 @@ struct VectorDistributionListener : RewriterBase::Listener {
 
   void clearOpsToBeDistributed() { return toBeDistributed.clear(); }
 
+  void setWorklist(std::deque<Operation *> &worklist) {
+    this->worklist = &worklist;
+  }
+
   const std::deque<Operation *> &getOpsToBeDistributed() const {
     return toBeDistributed;
+  }
+
+  void notifyOperationErased(Operation *op) override {
+    auto clearErasedOp = [&](std::deque<Operation *> &queue) {
+      for (Operation *&candidate : queue) {
+        if (candidate == op) {
+          candidate = nullptr;
+        }
+      }
+    };
+    clearErasedOp(toBeDistributed);
+    if (worklist) {
+      clearErasedOp(*worklist);
+    }
   }
 
   void notifyOperationModified(Operation *op) override {
@@ -57,6 +75,7 @@ struct VectorDistributionListener : RewriterBase::Listener {
   }
 
 private:
+  std::deque<Operation *> *worklist = nullptr;
   std::deque<Operation *> toBeDistributed;
 };
 
@@ -71,6 +90,7 @@ static void applyVectorDistribution(Operation *root,
 
   // Collect all the operations to be distributed.
   std::deque<Operation *> worklist;
+  listener.setWorklist(worklist);
   LLVM_DEBUG(llvm::dbgs() << "Collecting operations to be distributed\n");
   root->walk([&](Operation *op) {
     // The distribution of mask op is special.
