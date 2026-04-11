@@ -12,7 +12,7 @@
 hal.executable @group_reduction_1d {
 hal.executable.variant public @rocm_hsaco_fb target(<"rocm", "rocm-hsaco-fb">) {
   hal.executable.export public @group_reduction_1d ordinal(0) layout(#pipeline_layout) count(%arg0: !hal.device, %arg1: index, %arg2: index) -> (index, index, index) {
-    %x, %y, %z = iree_tensor_ext.dispatch.workgroup_count_from_dag_root(%arg1, %arg2)
+    %x, %y, %z = iree_tensor_ext.dispatch.workgroup_count_from_slice(%arg1, %arg2)
     hal.return %x, %y, %z : index, index, index
   }
   builtin.module {
@@ -50,7 +50,7 @@ hal.executable.variant public @rocm_hsaco_fb target(<"rocm", "rocm-hsaco-fb">) {
 hal.executable @group_reduction_1d {
 hal.executable.variant public @rocm_hsaco_fb target(<"rocm", "rocm-hsaco-fb">) {
   hal.executable.export public @group_reduction_1d ordinal(0) layout(#pipeline_layout) count(%arg0: !hal.device, %arg1: index, %arg2: index) -> (index, index, index) {
-    %x, %y, %z = iree_tensor_ext.dispatch.workgroup_count_from_dag_root(%arg1, %arg2)
+    %x, %y, %z = iree_tensor_ext.dispatch.workgroup_count_from_slice(%arg1, %arg2)
     hal.return %x, %y, %z : index, index, index
   }
   builtin.module {
@@ -140,9 +140,9 @@ hal.executable private @i4_dequant_matvec {
 //     RDNA3-DAG:   %[[C1:.+]] = arith.constant 1 : index
 //     RDNA3-DAG:   %[[CST:.+]] = arith.constant dense<0.000000e+00> : vector<4x1x1x1x1x1x1x1x1xf16>
 //         RDNA3:   %[[FOR:.+]] = scf.for %{{.+}} = %[[C0]] to %[[C32]] step %[[C1]] iter_args(%{{.*}} = %[[CST]]) -> (vector<4x1x1x1x1x1x1x1x1xf16>)
-//         RDNA3:   %{{.*}} = arith.uitofp %{{.*}} : vector<4x1x1x1x1x1x1x1x1x1x1x4xi4> to vector<4x1x1x1x1x1x1x1x1x1x1x4xf16>
-//         RDNA3:   %{{.*}} = arith.subf %{{.*}}, %{{.*}} : vector<4x1x1x1x1x1x1x1x1x1x1x4xf16>
-//         RDNA3:   %{{.*}} = arith.mulf %{{.*}}, %{{.*}} : vector<4x1x1x1x1x1x1x1x1x1x1x4xf16>
+//         RDNA3:   %{{.*}} = arith.uitofp %{{.*}} : vector<4x1x1x1x1x1x1x1x4xi4> to vector<4x1x1x1x1x1x1x1x4xf16>
+//         RDNA3:   %{{.*}} = arith.subf %{{.*}}, %{{.*}} : vector<4x1x1x1x1x1x1x1x4xf16>
+//         RDNA3:   %{{.*}} = arith.mulf %{{.*}}, %{{.*}} : vector<4x1x1x1x1x1x1x1x4xf16>
 //         RDNA3:   vector.contract {{.*}} : vector<1x1x1x1x1x1x1x1x4xf16>, vector<4x1x1x1x1x1x1x1x1x1x1x4xf16> into vector<4x1x1x1x1x1x1x1x1xf16>
 
 //         RDNA3:   vector.shape_cast %{{.*}} : vector<4x1x1x1x1x1x1x1x1xf16> to vector<4x1x1xf16>

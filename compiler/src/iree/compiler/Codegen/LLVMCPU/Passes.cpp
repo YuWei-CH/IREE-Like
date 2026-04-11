@@ -15,6 +15,7 @@
 #include "iree/compiler/Codegen/Utils/CodegenOptions.h"
 #include "iree/compiler/Dialect/LinalgExt/Transforms/Passes.h"
 #include "iree/compiler/Dialect/Util/Transforms/Passes.h"
+#include "iree/compiler/Transforms/Passes.h"
 #include "iree/compiler/Utils/PassUtils.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/CommandLine.h"
@@ -582,7 +583,7 @@ static void addLowerToLLVMPasses(OpPassManager &modulePassManager,
       .addPass(createCSEPass)
       // (HAL, IREE, Linalg, CF) -> LLVM
       .addPass(memref::createFoldMemRefAliasOpsPass)
-      .addPass(createIREECodegenAffineExpandIndexOpsPass)
+      .addPass(createIREEAffineExpandIndexOpsPass)
       .addPass([&]() {
         arith::ArithExpandOpsPassOptions options;
         options.includeBf16 = true;
@@ -629,6 +630,7 @@ void buildLLVMCPUCodegenConfigurationPassPipelineImpl(
       .addPass(createMaterializeDeviceEncodingPass)
       .addPass(createCPUPropagateDataLayoutPass)
       .addPass(createRematerializeParallelOpsPass)
+      .addPass(createInsertBatchDimForBatchlessConvPass)
       // TODO(#13888): This(createExpandF16OpToF32Pass()) pass is being added
       // way to late and should instead be be done during lowering to LLVM.
       .addPass(createExpandF16OpToF32Pass)
@@ -646,42 +648,36 @@ void buildLLVMCPUCodegenConfigurationPassPipelineImpl(
 }
 
 void buildLLVMCPUCodegenConfigurationPassPipeline(
-    OpPassManager &variantPassManager, const CPUCodegenOptions &cpuOpts) {
-  variantPassManager.addPass(createSpecializeExportsPass());
-  OpPassManager &modulePassManager = variantPassManager.nest<ModuleOp>();
+    OpPassManager &modulePassManager, const CPUCodegenOptions &cpuOpts) {
   buildLLVMCPUCodegenConfigurationPassPipelineImpl(modulePassManager, cpuOpts);
 }
 
-void buildLLVMCPUCodegenPassPipeline(OpPassManager &variantPassManager,
+void buildLLVMCPUCodegenPassPipeline(OpPassManager &modulePassManager,
                                      const CPUCodegenOptions &cpuOpts,
-                                     bool enableAArch64SME) {
-  {
-    OpPassManager &modulePassManager = variantPassManager.nest<ModuleOp>();
-    modulePassManager.addPass(createLowerExecutableUsingTransformDialectPass());
-    FunctionLikeNest(modulePassManager)
-        .addPass([&]() {
-          return createLLVMCPULowerExecutableTargetPass(
-              LLVMCPULowerExecutableTargetPassOptions{cpuOpts});
-        })
-        .addPass(createVerifyWorkgroupDistributionPass);
-    if (clPatchFuncOps) {
-      modulePassManager.addPass(createPatchFuncOpsPass());
-    }
+                                     bool enableAArch64SME,
+                                     bool includeLLVMLowering) {
+  modulePassManager.addPass(createLowerExecutableUsingTransformDialectPass());
+  FunctionLikeNest(modulePassManager)
+      .addPass([&]() {
+        return createLLVMCPULowerExecutableTargetPass(
+            LLVMCPULowerExecutableTargetPassOptions{cpuOpts});
+      })
+      .addPass(createVerifyWorkgroupDistributionPass);
+  if (clPatchFuncOps) {
+    modulePassManager.addPass(createPatchFuncOpsPass());
   }
+  modulePassManager.addPass(createReconcileTranslationInfoPass());
+  modulePassManager.addPass(createResolveWorkgroupCountHintsPass());
 
-  variantPassManager.addPass(createReconcileTranslationInfoPass());
-  variantPassManager.addPass(createResolveWorkgroupCountHintsPass());
-  variantPassManager.addPass(createIREECodegenLowerAffinePass());
-  variantPassManager.addPass(IREE::Util::createDropCompilerHintsPass());
+  modulePassManager.addPass(createIREELowerAffinePass());
+  modulePassManager.addPass(IREE::Util::createDropCompilerHintsPass());
 
-  // Run conversion to LLVM at `ModuleOp` granularity.
-  {
-    OpPassManager &modulePassManager = variantPassManager.nest<ModuleOp>();
+  if (includeLLVMLowering) {
     addLowerToLLVMPasses(modulePassManager, enableAArch64SME, cpuOpts);
   }
   LLVM_DEBUG({
     llvm::dbgs() << "LLVMCPU codegen pass pipeline:\n";
-    variantPassManager.printAsTextualPipeline(llvm::dbgs());
+    modulePassManager.printAsTextualPipeline(llvm::dbgs());
     llvm::dbgs() << "\n";
   });
 }
@@ -789,24 +785,29 @@ void registerCodegenLLVMCPUPasses() {
         buildLLVMCPUVectorLoweringPipeline(funcPassManager, options);
       });
 
-  struct LinalgToLLVMPipelineOptions
-      : PassPipelineOptions<LinalgToLLVMPipelineOptions> {
+  struct LLVMCPULoweringPipelineOptions
+      : PassPipelineOptions<LLVMCPULoweringPipelineOptions> {
     Option<bool> enableArmSME{
         *this, "enable-arm-sme",
         llvm::cl::desc("Enable the ArmSME lowering pipeline.")};
+    Option<bool> includeLLVMLowering{
+        *this, "include-llvm-lowering",
+        llvm::cl::desc("Include the lowering to LLVM dialect."),
+        llvm::cl::init(true)};
   };
 
-  static PassPipelineRegistration<LinalgToLLVMPipelineOptions>
-      LinalgLLVMPipeline(
-          "iree-codegen-linalg-to-llvm-pipeline",
-          "Runs the progressive lowering pipeline from Linalg to LLVM",
-          [](OpPassManager &variantPassManager,
-             LinalgToLLVMPipelineOptions const &options) {
+  static PassPipelineRegistration<LLVMCPULoweringPipelineOptions>
+      LLVMCPULoweringPipeline(
+          "iree-codegen-llvmcpu-lowering-pipeline",
+          "Runs the LLVMCPU lowering pipeline",
+          [](OpPassManager &modulePassManager,
+             LLVMCPULoweringPipelineOptions const &options) {
             // Use global codegen options for pipeline registration.
             const CPUCodegenOptions &cpuOpts =
                 CPUCodegenOptions::FromFlags::get();
-            buildLLVMCPUCodegenPassPipeline(variantPassManager, cpuOpts,
-                                            options.enableArmSME);
+            buildLLVMCPUCodegenPassPipeline(modulePassManager, cpuOpts,
+                                            options.enableArmSME,
+                                            options.includeLLVMLowering);
           });
 
   static PassPipelineRegistration<> LLVMCPULinkingPipeline(

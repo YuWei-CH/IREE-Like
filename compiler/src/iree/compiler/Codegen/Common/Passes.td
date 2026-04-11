@@ -357,11 +357,10 @@ def DropVectorUnitDimsPass :
 }
 
 def ReconcileTranslationInfoPass
-    : Pass<"iree-codegen-reconcile-translation-info", "IREE::HAL::ExecutableVariantOp"> {
+    : Pass<"iree-codegen-reconcile-translation-info", "ModuleOp"> {
   let summary =
       "Reconcile information (like workgroup_size, subgroup_size) across "
-      "`TranslationInfo` set on each function in the dispatch and merge them"
-      "and set them at the appropriate places in the surrounding HAL ops";
+      "`TranslationInfo` set on each function in the dispatch and merge them";
   let options = [
     Option<"distributeAlong", "distribute-along",
            "::mlir::iree_compiler::IREE::Codegen::WorkgroupId",
@@ -379,7 +378,7 @@ def ReconcileTranslationInfoPass
 }
 
 def ResolveWorkgroupCountHintsPass
-    : Pass<"iree-codegen-resolve-workgroup-count-hints", "IREE::HAL::ExecutableVariantOp"> {
+    : Pass<"iree-codegen-resolve-workgroup-count-hints", "ModuleOp"> {
   let summary = "Materialize workgroup count hints in the workgroup count region per export.";
   let description = [{
     Resolves `iree_codegen.workgroup_count_hint` ops by materializing a globally
@@ -462,6 +461,9 @@ def ResolveWorkgroupCountHintsPass
     (e.g., `hal.interface.*` ops, workgroup/thread IDs) result in a compiler
     error for hint operands and omit conditionals for `scf.if` operands.
   }];
+  let dependentDialects = [
+    "iree_compiler::IREE::Codegen::IREECodegenDialect",
+  ];
 }
 
 def CreateDispatchConfigPass
@@ -654,6 +656,23 @@ def OptimizeTensorInsertExtractSlicesPass
   ];
 }
 
+def HoistInnerTiledAccReshapesPass :
+    InterfacePass<"iree-codegen-hoist-inner-tiled-acc-reshapes", "mlir::FunctionOpInterface"> {
+  let summary = "Hoist vector reshapes surrounding inner_tiled ops out of loops";
+  let description = [{
+    This pass, mainly intended for use in vector distribution-based pipelines,
+    searches for chains of vector reshapes (currently transpose, shape_cast, and
+    broadcast, but it could be extended to other operations) that bracket an
+    `iree_codegen.inner_tiled`'s accumulator(s) on the way from and to the
+    argument of the reduction loop it's in, and adds in `util.hoistable_conversion`
+    markers to move these operations out of the loop to enable further optimizations.
+  }];
+  let dependentDialects = [
+    "::mlir::iree_compiler::IREE::Util::UtilDialect",
+    "::mlir::ub::UBDialect",
+  ];
+}
+
 def HoistUnrolledVectorExtractInsertSlicePass :
     InterfacePass<"iree-codegen-hoist-vector-extract-insert-slice", "mlir::FunctionOpInterface"> {
   let summary = "Hoist unrolled vector (extract, insert) pairs out of scf.for op";
@@ -682,11 +701,6 @@ def IREEBufferizeConstantsPass :
   let summary = "Convert from arith.constant on tensors to buffers";
 }
 
-def IREECodegenAffineExpandIndexOpsPass :
-    Pass<"iree-codegen-affine-expand-index-ops", ""> {
-  let summary = "Expand affine index ops with region simplification config";
-}
-
 def IREECodegenCanonicalizerPass :
     Pass<"iree-codegen-canonicalize", ""> {
   let summary = "Codegen canonicalization pass with IREE specific patterns";
@@ -699,11 +713,6 @@ def IREECodegenCanonicalizerPass :
 def IREECodegenFoldMemRefAliasOpsPass :
     Pass<"iree-codegen-fold-memref-alias-ops", ""> {
   let summary = "Fold memref alias ops with region simplification config";
-}
-
-def IREECodegenLowerAffinePass :
-    Pass<"iree-codegen-lower-affine", ""> {
-  let summary = "Lower affine operations to standard with region simplification config";
 }
 
 def IREEComprehensiveBufferizePass :
@@ -994,6 +1003,12 @@ def PropagateDispatchSizeBoundsPass :
     InterfacePass<"iree-codegen-propagate-dispatch-size-bounds", "mlir::FunctionOpInterface"> {
   let summary = "Pass to annotate workitem and workgroup IDs with known bounds";
   let dependentDialects = ["::mlir::arith::ArithDialect"];
+  let options = [
+    Option<"useDispatchConfig", "use-dispatch-config", "bool",
+           /*default=*/"false",
+           "Read workgroup size/count from dispatch_config op instead of "
+           "hal.executable.export.">,
+  ];
 }
 
 def PropagateReshapesByExpansionPass :

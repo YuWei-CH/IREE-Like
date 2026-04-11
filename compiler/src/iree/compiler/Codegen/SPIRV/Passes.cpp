@@ -22,6 +22,7 @@
 #include "iree/compiler/Codegen/Utils/GPUUtils.h"
 #include "iree/compiler/Codegen/Utils/MarkerUtils.h"
 #include "iree/compiler/Dialect/Util/Transforms/Passes.h"
+#include "iree/compiler/Transforms/Passes.h"
 #include "iree/compiler/Utils/PassUtils.h"
 #include "llvm/ADT/STLForwardCompat.h"
 #include "llvm/Support/Debug.h"
@@ -236,7 +237,7 @@ static void addSPIRVLoweringPasses(OpPassManager &modulePassManager) {
       .addPass(createPropagateDispatchSizeBoundsPass)
       .addPass(createCanonicalizerPass)
       .addPass(createCSEPass)
-      .addPass(createIREECodegenLowerAffinePass)
+      .addPass(createIREELowerAffinePass)
       .addPass([]() {
         return IREE::Util::createOptimizeIntArithmeticPass(
             IREE::Util::OptimizeIntArithmeticPassOptions{/*narrowToI32=*/true});
@@ -641,36 +642,28 @@ static void buildSPIRVCodegenConfigurationPassPipelineImpl(
 }
 
 void buildSPIRVCodegenConfigurationPassPipeline(
-    OpPassManager &variantPassManager) {
-  variantPassManager.addPass(createSpecializeExportsPass());
-  OpPassManager &modulePassManager = variantPassManager.nest<ModuleOp>();
+    OpPassManager &modulePassManager) {
   buildSPIRVCodegenConfigurationPassPipelineImpl(modulePassManager);
 }
 
-void buildSPIRVCodegenPassPipeline(OpPassManager &variantPassManager) {
-  {
-    OpPassManager &modulePassManager = variantPassManager.nest<ModuleOp>();
-    modulePassManager.addPass(
-        createSPIRVLowerExecutableUsingTransformDialectPass());
-    FunctionLikeNest(modulePassManager)
-        .addPass(createSPIRVLowerExecutableTargetPass)
-        .addPass(createVerifyWorkgroupDistributionPass);
-    addMemRefLoweringPasses(modulePassManager);
-    FunctionLikeNest(modulePassManager).addPass(createGpuEliminateBarriers);
-  }
-  variantPassManager.addPass(createReconcileTranslationInfoPass());
-  variantPassManager.addPass(createResolveWorkgroupCountHintsPass());
-  variantPassManager.addPass(IREE::Util::createDropCompilerHintsPass(
+void buildSPIRVCodegenPassPipeline(OpPassManager &modulePassManager) {
+  modulePassManager.addPass(
+      createSPIRVLowerExecutableUsingTransformDialectPass());
+  FunctionLikeNest(modulePassManager)
+      .addPass(createSPIRVLowerExecutableTargetPass)
+      .addPass(createVerifyWorkgroupDistributionPass);
+  addMemRefLoweringPasses(modulePassManager);
+  FunctionLikeNest(modulePassManager).addPass(createGpuEliminateBarriers);
+  modulePassManager.addPass(createReconcileTranslationInfoPass());
+  modulePassManager.addPass(createResolveWorkgroupCountHintsPass());
+  modulePassManager.addPass(IREE::Util::createDropCompilerHintsPass(
       IREE::Util::DropCompilerHintsPassOptions{/*keepAssumeInt=*/true}));
 
-  {
-    OpPassManager &modulePassManager = variantPassManager.nest<ModuleOp>();
-    addSPIRVLoweringPasses(modulePassManager);
-  }
+  addSPIRVLoweringPasses(modulePassManager);
 
   LLVM_DEBUG({
     llvm::dbgs() << "Using SPIR-V pass pipeline:\n";
-    variantPassManager.printAsTextualPipeline(llvm::dbgs());
+    modulePassManager.printAsTextualPipeline(llvm::dbgs());
     llvm::dbgs() << "\n";
   });
 }
@@ -769,8 +762,8 @@ void registerCodegenSPIRVPasses() {
   static PassPipelineRegistration<> LinalgSPIRVPipeline(
       "iree-codegen-linalg-to-spirv-pipeline",
       "Runs the progressive lowering pipeline from linalg to SPIR-V",
-      [](OpPassManager &variantPassManager) {
-        buildSPIRVCodegenPassPipeline(variantPassManager);
+      [](OpPassManager &modulePassManager) {
+        buildSPIRVCodegenPassPipeline(modulePassManager);
       });
 }
 

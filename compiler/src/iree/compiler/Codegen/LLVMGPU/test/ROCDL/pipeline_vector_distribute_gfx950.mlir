@@ -18,7 +18,7 @@
 hal.executable @matmul_256x256x512_f16_f32 {
 hal.executable.variant @rocm target(<"rocm", "rocm-hsaco-fb">) {
   hal.executable.export @matmul_256x256x512_f16_f32 layout(#pipeline_layout) count(%arg0: !hal.device, %arg1: index, %arg2 : index) -> (index, index, index) {
-      %x, %y, %z = iree_tensor_ext.dispatch.workgroup_count_from_dag_root(%arg1, %arg2)
+      %x, %y, %z = iree_tensor_ext.dispatch.workgroup_count_from_slice(%arg1, %arg2)
       hal.return %x, %y, %z : index, index, index
     }
   builtin.module {
@@ -43,11 +43,11 @@ hal.executable.variant @rocm target(<"rocm", "rocm-hsaco-fb">) {
 // Basic pipeline test to make sure it generates the instructions we expect.
 
 //    CHECK-LABEL: func.func @matmul_256x256x512_f16_f32()
-//          CHECK:   scf.for {{.*}} = %c0 to %c512 step %c256 iter_args({{.*}}) -> (vector<2x2x1x1x4x1xf32>)
+//          CHECK:   scf.for {{.*}} = %c0 to %c512 step %c256 iter_args({{.*}}) -> (vector<4xf32>, vector<4xf32>, vector<4xf32>, vector<4xf32>)
 // Each subgroup handles 2 * 2 tiles, and for each tile we accumulate 8 times
 // along the K dimension. So in total 32 mfma ops.
 // CHECK-COUNT-32:     amdgpu.mfma 16x16x32 {{.*}} blgp =  none : vector<8xf16>, vector<8xf16>, vector<4xf32>
-//          CHECK:     scf.yield %{{.+}} : vector<2x2x1x1x4x1xf32>
+//          CHECK:     scf.yield
 //  CHECK-COUNT-4:   vector.transfer_write {{.+}} {in_bounds = [true, true]} : vector<4x1xf32>, memref<256x256xf32, #amdgpu.address_space<fat_raw_buffer>>
 
 
@@ -68,7 +68,7 @@ hal.executable.variant @rocm target(<"rocm", "rocm-hsaco-fb">) {
 hal.executable @matmul_256x256x512_f16_f32 {
 hal.executable.variant @rocm target(<"rocm", "rocm-hsaco-fb">) {
   hal.executable.export @matmul_256x256x512_f16_f32 layout(#pipeline_layout) count(%arg0: !hal.device, %arg1: index, %arg2 : index) -> (index, index, index) {
-      %x, %y, %z = iree_tensor_ext.dispatch.workgroup_count_from_dag_root(%arg1, %arg2)
+      %x, %y, %z = iree_tensor_ext.dispatch.workgroup_count_from_slice(%arg1, %arg2)
       hal.return %x, %y, %z : index, index, index
     }
   builtin.module {
@@ -91,9 +91,9 @@ hal.executable.variant @rocm target(<"rocm", "rocm-hsaco-fb">) {
 }
 
 //    CHECK-LABEL: func.func @matmul_256x256x512_f16_f32()
-//          CHECK:   scf.for {{.*}} = %c0 to %c512 step %c256 iter_args(%[[ARG:.+]] = {{.*}}) -> (vector<2x2x1x1x4x1xf32>)
+//          CHECK:   scf.for {{.*}} = %c0 to %c512 step %c256 iter_args(%[[ARG:.+]] = {{.*}}) -> (vector<4xf32>, vector<4xf32>, vector<4xf32>, vector<4xf32>)
 // CHECK-COUNT-32:     amdgpu.mfma 16x16x32 {{.*}} blgp =  none : vector<8xf16>, vector<8xf16>, vector<4xf32>
-//          CHECK:     scf.yield {{.*}} : vector<2x2x1x1x4x1xf32>
+//          CHECK:     scf.yield
 //  CHECK-COUNT-4:   vector.transfer_write {{.+}} {in_bounds = [true, true]} : vector<4x1xf32>, memref<256x256xf32, #amdgpu.address_space<fat_raw_buffer>>
 
 // MEMORY-LABEL: func.func @matmul_256x256x512_f16_f32()
@@ -162,9 +162,9 @@ hal.executable.variant @rocm target(<"rocm", "rocm-hsaco-fb">) {
 //    CHECK-LABEL: func @expanded_matmul_transpose_b
 // This has more than 2 iterations. So we have prefetching enabled for this case. Due to
 // prefetching, we have one iteration peeled of so upper bound is 2048 - 256 = 1792.
-//          CHECK:   scf.for {{.*}} = %c0 to %c1792 step %c256 iter_args({{.*}}) -> (vector<1x1x4x1x1x1x1x1x1x1x4x1xf32>)
+//          CHECK:   scf.for {{.*}} = %c0 to %c1792 step %c256 iter_args({{.*}}) -> (vector<4xf32>, vector<4xf32>, vector<4xf32>, vector<4xf32>)
 // CHECK-COUNT-32:     amdgpu.mfma 16x16x32 {{.*}} blgp =  none : vector<8xf16>, vector<8xf16>, vector<4xf32>
-//          CHECK:     scf.yield %{{.+}} : vector<1x1x4x1x1x1x1x1x1x1x4x1xf32>
+//          CHECK:     scf.yield
 // CHECK-COUNT-32:   amdgpu.mfma
 //  CHECK-COUNT-4:   vector.transfer_write {{.+}} {in_bounds = [true, true, true, true]} : vector<1x1x4x1xf32>, memref<2x10x64x64xf32, #amdgpu.address_space<fat_raw_buffer>>
 
@@ -241,7 +241,7 @@ hal.executable @matmul_multiple_k {
 hal.executable @matmul_256x256x256_16x16x128_f8_f32 {
 hal.executable.variant @rocm target(<"rocm", "rocm-hsaco-fb">) {
   hal.executable.export @matmul_256x256x256_16x16x32_f8_f32 layout(#pipeline_layout) count(%arg0: !hal.device, %arg1: index, %arg2 : index) -> (index, index, index) {
-      %x, %y, %z = iree_tensor_ext.dispatch.workgroup_count_from_dag_root(%arg1, %arg2)
+      %x, %y, %z = iree_tensor_ext.dispatch.workgroup_count_from_slice(%arg1, %arg2)
       hal.return %x, %y, %z : index, index, index
     }
   builtin.module {
@@ -292,7 +292,7 @@ hal.executable.variant @rocm target(<"rocm", "rocm-hsaco-fb">) {
 hal.executable @matmul_256x256x256_i8_i32 {
 hal.executable.variant @rocm target(<"rocm", "rocm-hsaco-fb">) {
   hal.executable.export @matmul_256x256x256_i8_i32 layout(#pipeline_layout) count(%arg0: !hal.device, %arg1: index, %arg2 : index) -> (index, index, index) {
-      %x, %y, %z = iree_tensor_ext.dispatch.workgroup_count_from_dag_root(%arg1, %arg2)
+      %x, %y, %z = iree_tensor_ext.dispatch.workgroup_count_from_slice(%arg1, %arg2)
       hal.return %x, %y, %z : index, index, index
     }
   builtin.module {
@@ -343,7 +343,7 @@ hal.executable.variant @rocm target(<"rocm", "rocm-hsaco-fb">) {
 hal.executable @matmul_256x256x256_32x32x64_f8_f32 {
 hal.executable.variant @rocm target(<"rocm", "rocm-hsaco-fb">) {
   hal.executable.export @matmul_256x256x256_32x32x64_f8_f32 layout(#pipeline_layout) count(%arg0: !hal.device, %arg1: index, %arg2 : index) -> (index, index, index) {
-      %x, %y, %z = iree_tensor_ext.dispatch.workgroup_count_from_dag_root(%arg1, %arg2)
+      %x, %y, %z = iree_tensor_ext.dispatch.workgroup_count_from_slice(%arg1, %arg2)
       hal.return %x, %y, %z : index, index, index
     }
   builtin.module {
@@ -394,7 +394,7 @@ hal.executable.variant @rocm target(<"rocm", "rocm-hsaco-fb">) {
 hal.executable @matmul_transpose_b_256x256x256_i8_i32 {
 hal.executable.variant @rocm target(<"rocm", "rocm-hsaco-fb">) {
   hal.executable.export @matmul_transpose_b_256x256x256_i8_i32 layout(#pipeline_layout) count(%arg0: !hal.device, %arg1: index, %arg2 : index) -> (index, index, index) {
-      %x, %y, %z = iree_tensor_ext.dispatch.workgroup_count_from_dag_root(%arg1, %arg2)
+      %x, %y, %z = iree_tensor_ext.dispatch.workgroup_count_from_slice(%arg1, %arg2)
       hal.return %x, %y, %z : index, index, index
     }
   builtin.module {
