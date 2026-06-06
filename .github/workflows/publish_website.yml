@@ -45,7 +45,7 @@ jobs:
       CXX: clang++
     steps:
       - name: Checkout out repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           submodules: true
           token: ${{ secrets.WRITE_ACCESS_TOKEN }}
@@ -82,7 +82,7 @@ jobs:
             --output=docs/website/docs/pip-release-links.html
 
       - name: ccache
-        uses: hendrikmuhs/ccache-action@1bbbcda0748b3e340dee71a314fa68ffcbd6df79 # v1.2.21
+        uses: hendrikmuhs/ccache-action@d62db5f07c26379fc4b4e0916f098a92573c3b03 # v1.2.23
         with:
           key: ${{ github.job }}
       - name: Building documentation files
