@@ -39,7 +39,7 @@ jobs:
       BUILD_DIR: build
     steps:
       - name: Check out repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           submodules: false
           fetch-depth: 0
@@ -50,7 +50,7 @@ jobs:
           git submodule update --init --depth=1
 
       - name: Download iree-clang-tidy artifact
-        uses: dawidd6/action-download-artifact@1f8785ff7a5130826f848e7f72725c85d241860f # v18
+        uses: dawidd6/action-download-artifact@b6e2e70617bc3265edd6dab6c906732b2f1ae151 # v21
         with:
           workflow: build_clang_tidy.yml
           name: iree-clang-tidy-linux-x86_64
@@ -78,7 +78,7 @@ jobs:
           IREE_CONFIGURE_ONLY=1 ./build_tools/cmake/build_all.sh "${BUILD_DIR}"
 
       - name: Run clang-tidy
-        uses: cpp-linter/cpp-linter-action@24467985494bed9bfc398489b6ec12469beaf4da # v1.11.4
+        uses: cpp-linter/cpp-linter-action@4f2a4033eda6119c3bf1a4d30857a4c61c11c247 # v1.11.4
         id: linter
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

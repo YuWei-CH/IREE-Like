@@ -45,7 +45,7 @@ jobs:
       CXX: clang++
     steps:
       - name: Checkout out repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           submodules: true
           token: ${{ secrets.WRITE_ACCESS_TOKEN }}
@@ -53,7 +53,7 @@ jobs:
         # We have to explicitly fetch the gh-pages branch as well to preserve history
         run: git fetch --no-tags --prune --depth=1 origin "gh-pages:gh-pages"
       - name: Setting up Python
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: 3.x
           cache: "pip"
@@ -82,7 +82,7 @@ jobs:
             --output=docs/website/docs/pip-release-links.html
 
       - name: ccache
-        uses: hendrikmuhs/ccache-action@1bbbcda0748b3e340dee71a314fa68ffcbd6df79 # v1.2.21
+        uses: hendrikmuhs/ccache-action@d62db5f07c26379fc4b4e0916f098a92573c3b03 # v1.2.23
         with:
           key: ${{ github.job }}
       - name: Building documentation files

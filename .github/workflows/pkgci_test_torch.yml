@@ -65,10 +65,10 @@ jobs:
       CONFIG_FILE_PATH: tests/external/iree-test-suites/torch_ops/${{ matrix.config-file }}
     steps:
       - name: Checking out IREE repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           submodules: false
-      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           # Must match the subset of versions built in pkgci_build_packages.
           python-version: "3.11"
@@ -84,7 +84,7 @@ jobs:
             --fetch-gh-workflow=${{ inputs.artifact_run_id }}
 
       - name: Checkout test suites repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           repository: iree-org/iree-test-suites
           ref: 3182e7a131551362e5e5eb20bbb18bfa6e7eb89c
@@ -138,11 +138,11 @@ jobs:
       PACKAGE_DOWNLOAD_DIR: ${{ github.workspace }}/.packages
     steps:
       - name: Checking out IREE repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           submodules: false
 
-      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v5.4.0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v5.4.0
         with:
           # Must match the subset of versions built in pkgci_build_packages.
           python-version: "3.11"
@@ -154,7 +154,7 @@ jobs:
           path: ${{ env.PACKAGE_DOWNLOAD_DIR }}
 
       - name: Checkout test suites repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           repository: iree-org/iree-test-suites
           ref: 3182e7a131551362e5e5eb20bbb18bfa6e7eb89c
@@ -201,7 +201,7 @@ jobs:
 
       - name: Upload Torch Models JSON Summary
         if: always()
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ${{ matrix.summary-file }}
           path: ${{ github.workspace }}/iree-test-suites/job_summary.json
